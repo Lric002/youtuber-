@@ -1,0 +1,15 @@
+# secrets / env
+.env
+frontend/.env.local
+
+# python
+__pycache__/
+*.pyc
+cache/
+
+# generated spreadsheets
+*.xlsx
+
+# node / next (frontend has its own .gitignore too)
+node_modules/
+.next/

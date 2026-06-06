@@ -1,0 +1,23 @@
+# Render（バックエンド/FastAPI）デプロイ定義。
+# Render ダッシュボードで "New + > Blueprint" からこのリポジトリを指定すると読み込まれる。
+services:
+  - type: web
+    name: yt-screener-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: YOUTUBE_API_KEY
+        sync: false          # ダッシュボードで手入力（秘密）
+      - key: APP_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true  # Render が自動生成
+      - key: DAILY_QUOTA_CAP
+        value: "8000"
+      - key: FRONTEND_ORIGIN
+        sync: false          # Vercel のURL（例: https://your-app.vercel.app）
+      - key: PYTHON_VERSION
+        value: "3.12.6"
