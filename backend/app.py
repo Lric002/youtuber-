@@ -38,11 +38,18 @@ _jobs_lock = threading.Lock()
 
 app = FastAPI(title="YouTuber Screener API")
 
-_origins = [o.strip() for o in os.getenv("FRONTEND_ORIGIN", "").split(",") if o.strip()]
+# FRONTEND_ORIGIN は複数可（カンマ区切り）。末尾スラッシュは事故りやすいので吸収する。
+_origins = [
+    o.strip().rstrip("/")
+    for o in os.getenv("FRONTEND_ORIGIN", "").split(",")
+    if o.strip()
+]
 _origins += ["http://localhost:3000", "http://127.0.0.1:3000"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    # Vercel のプレビュー含む *.vercel.app も許可（本番ドメイン未設定でも動くように）
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
