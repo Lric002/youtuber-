@@ -343,6 +343,7 @@ function ResultsTable({
   const [sortKey, setSortKey] = useState<SortKey>("score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [themeFilter, setThemeFilter] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const themes = useMemo(
     () => Array.from(new Set(results.map((r) => r.theme))).sort(),
@@ -377,6 +378,40 @@ function ResultsTable({
     );
   }
 
+  // 表示中の行を TSV（タブ区切り）にしてクリップボードへ。
+  // 空の Google スプレッドシートに貼り付けると、そのままセルに展開される。
+  async function copyForSheets() {
+    const cols: [string, (r: ChannelResult) => string | number][] = [
+      ["スコア", (r) => r.score],
+      ["チャンネル名", (r) => r.title],
+      ["テーマ", (r) => r.theme],
+      ["登録者数", (r) => r.subscriber_count ?? ""],
+      ["直近平均再生数", (r) => r.avg_views ?? ""],
+      ["エンゲージ率", (r) => (r.engagement != null ? `${(r.engagement * 100).toFixed(1)}%` : "")],
+      ["動画数", (r) => r.video_count ?? ""],
+      ["最終投稿日", (r) => (r.last_upload || "").slice(0, 10)],
+      ["メール候補", (r) => (r.emails || []).join(", ")],
+      ["競合言及", (r) => r.competitor_flags.join(", ")],
+      ["URL", (r) => r.url],
+    ];
+    const clean = (v: string | number) => String(v).replace(/[\t\n\r]+/g, " ");
+    const lines = [cols.map((c) => c[0]).join("\t")];
+    for (const r of rows) lines.push(cols.map((c) => clean(c[1](r))).join("\t"));
+    const tsv = lines.join("\n");
+    try {
+      await navigator.clipboard.writeText(tsv);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = tsv;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
   return (
     <section className="mt-6">
       <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -394,6 +429,12 @@ function ResultsTable({
           ))}
         </select>
         <button
+          onClick={copyForSheets}
+          className="ml-auto rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
+        >
+          {copied ? "コピーしました ✓" : "スプレッドシート用にコピー"}
+        </button>
+        <button
           onClick={async () => {
             if (!jobId) return;
             try {
@@ -402,7 +443,7 @@ function ResultsTable({
               onError(e instanceof Error ? e.message : "ダウンロード失敗");
             }
           }}
-          className="ml-auto rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700"
+          className="rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700"
         >
           Excelダウンロード
         </button>
