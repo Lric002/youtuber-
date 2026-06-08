@@ -5,10 +5,8 @@ import {
   ChannelResult,
   JobStatus,
   Stats,
-  clearToken,
   downloadExcel,
   getStatus,
-  getToken,
   startSearch,
 } from "@/lib/api";
 import {
@@ -30,7 +28,6 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 export default function Home() {
-  const [ready, setReady] = useState(false);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<JobStatus["progress"] | null>(null);
@@ -38,15 +35,6 @@ export default function Home() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
-
-  // 認証ガード
-  useEffect(() => {
-    if (!getToken()) {
-      window.location.href = "/login";
-    } else {
-      setReady(true);
-    }
-  }, []);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -84,37 +72,19 @@ export default function Home() {
         }
       }
     } catch (e) {
-      if (e instanceof Error && e.message === "unauthorized") {
-        clearToken();
-        window.location.href = "/login";
-        return;
-      }
       setError(e instanceof Error ? e.message : "通信エラー");
     } finally {
       setRunning(false);
     }
   }
 
-  if (!ready) return null;
-
   return (
     <div className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6">
       <header className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-bold sm:text-xl">YouTuber スクリーナー</h1>
-        <div className="flex items-center gap-4 text-sm">
-          <a href="/guide" className="text-blue-600 hover:underline">
-            検索のコツ
-          </a>
-          <button
-            onClick={() => {
-              clearToken();
-              window.location.href = "/login";
-            }}
-            className="text-gray-500 hover:underline"
-          >
-            ログアウト
-          </button>
-        </div>
+        <a href="/guide" className="text-sm text-blue-600 hover:underline">
+          検索のコツ
+        </a>
       </header>
 
       <SearchForm

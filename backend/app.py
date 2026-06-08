@@ -16,13 +16,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
-from fastapi import Body, Depends, FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from pydantic import BaseModel
 
 import quota
-from auth import issue_token, password_ok, require_auth
 from screener import Cache, Config, YouTubeScreener, excel_bytes, run_screening
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -54,13 +52,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# --------------------------------------------------------------------------- #
-# モデル
-# --------------------------------------------------------------------------- #
-class LoginReq(BaseModel):
-    password: str
 
 
 # --------------------------------------------------------------------------- #
@@ -97,22 +88,13 @@ def health() -> Dict[str, Any]:
     return {"ok": True, "quota": quota.status()}
 
 
-@app.post("/api/login")
-def login(req: LoginReq) -> Dict[str, str]:
-    if not password_ok(req.password):
-        raise HTTPException(status_code=401, detail="パスワードが違います。")
-    return {"token": issue_token()}
-
-
 @app.get("/api/quota")
-def get_quota(_: None = Depends(require_auth)) -> Dict[str, Any]:
+def get_quota() -> Dict[str, Any]:
     return quota.status()
 
 
 @app.post("/api/search")
-def start_search(
-    payload: Dict[str, Any] = Body(...), _: None = Depends(require_auth)
-) -> Dict[str, str]:
+def start_search(payload: Dict[str, Any] = Body(...)) -> Dict[str, str]:
     cfg = Config(payload)
     if not cfg.keywords:
         raise HTTPException(status_code=400, detail="検索キーワードを1つ以上入力してください。")
@@ -140,7 +122,7 @@ def start_search(
 
 
 @app.get("/api/search/{job_id}")
-def search_status(job_id: str, _: None = Depends(require_auth)) -> Dict[str, Any]:
+def search_status(job_id: str) -> Dict[str, Any]:
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="ジョブが見つかりません。")
@@ -156,7 +138,7 @@ def search_status(job_id: str, _: None = Depends(require_auth)) -> Dict[str, Any
 
 
 @app.get("/api/export/{job_id}.xlsx")
-def export_xlsx(job_id: str, _: None = Depends(require_auth)) -> Response:
+def export_xlsx(job_id: str) -> Response:
     job = _jobs.get(job_id)
     if not job or job["status"] != "done":
         raise HTTPException(status_code=404, detail="完了したジョブが見つかりません。")
