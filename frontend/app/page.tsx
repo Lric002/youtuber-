@@ -276,10 +276,17 @@ function PresetBar({ form, setForm }: { form: FormState; setForm: (f: FormState)
         </button>
       )}
       <button
-        onClick={() => setForm(DEFAULT_FORM)}
+        onClick={() =>
+          setForm({
+            ...DEFAULT_FORM,
+            keywordsTier1: "",
+            keywordsTier2: "",
+            keywordsTier3: "",
+          })
+        }
         className="ml-auto text-gray-500 hover:underline"
       >
-        初期条件に戻す
+        条件リセット（検索欄を空に）
       </button>
     </div>
   );
