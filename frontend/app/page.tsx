@@ -444,7 +444,7 @@ function ResultsTable({
     const cols: [string, (r: ChannelResult) => string | number][] = [
       ["スコア", (r) => r.score],
       ["チャンネル名", (r) => r.title],
-      ["テーマ", (r) => r.theme],
+      ["URL", (r) => r.url],
       ["登録者数", (r) => r.subscriber_count ?? ""],
       ["長尺平均再生数", (r) => r.avg_views ?? ""],
       ["ショート平均再生数", (r) => r.avg_views_short ?? ""],
@@ -455,7 +455,7 @@ function ResultsTable({
       ["最終投稿日", (r) => (r.last_upload || "").slice(0, 10)],
       ["メール候補", (r) => (r.emails || []).join(", ")],
       ["競合言及", (r) => r.competitor_flags.join(", ")],
-      ["URL", (r) => r.url],
+      ["テーマ", (r) => r.theme],
     ];
     const clean = (v: string | number) => String(v).replace(/[\t\n\r]+/g, " ");
     const lines = [cols.map((c) => c[0]).join("\t")];

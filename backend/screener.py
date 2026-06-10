@@ -644,7 +644,7 @@ def run_screening(
 EXCEL_HEADERS = [
     ("総合スコア", "score", 10),
     ("チャンネル名", "title", 30),
-    ("テーマ", "theme", 10),
+    ("URL", "url", 45),
     ("登録者数", "subscriber_count", 12),
     ("長尺平均再生数", "avg_views", 14),
     ("ショート平均再生数", "avg_views_short", 16),
@@ -658,7 +658,7 @@ EXCEL_HEADERS = [
     ("メール候補(自動抽出)", "emails", 30),
     ("ヒットしたキーワード", "matched_keywords", 30),
     ("競合言及フラグ", "competitor_flags", 18),
-    ("URL", "url", 45),
+    ("テーマ", "theme", 10),
     ("連絡先(手入力)", "_contact", 18),
     ("備考(手入力)", "_note", 24),
 ]
