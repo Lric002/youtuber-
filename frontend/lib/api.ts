@@ -8,7 +8,10 @@ export type ChannelResult = {
   title: string;
   theme: string;
   subscriber_count: number | null;
-  avg_views: number | null;
+  avg_views: number | null;        // 長尺のみの平均
+  avg_views_short: number | null;  // ショートのみの平均
+  long_count: number | null;
+  short_count: number | null;
   engagement: number | null;
   video_count: number | null;
   last_upload: string | null;

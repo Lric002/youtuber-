@@ -41,6 +41,10 @@ THEME_FISHING = ["釣り", "リール", "魚探", "魚群探知", "船", "沖", 
 THEME_ASTRO = ["星", "天体", "赤道儀", "電視観望", "星雲", "天の川", "ディープスカイ",
                "望遠鏡", "星景", "星空", "観望", "天文", "ポタ赤", "タイムラプス"]
 
+# この秒数以下の動画はショート扱い（YouTube APIに公式フラグは無く、長さで判定する）。
+# ショートは現在最長3分だが、誤分類を減らすため既定は60秒（古典的ショート）にする。
+SHORT_MAX_SECONDS = 60
+
 NoOp = lambda *a, **k: None  # noqa: E731
 
 
@@ -211,10 +215,16 @@ class YouTubeScreener:
         - 動画統計(videos.list)は全チャンネル横断で **50件ずつ一括**取得し、動画単位でキャッシュ
         - 既に recent キャッシュがあるチャンネルは API を一切叩かない
         """
-        empty = {"avg_views": None, "last_upload": None, "emails": []}
+        empty = {
+            "avg_views": None, "avg_views_long": None, "avg_views_short": None,
+            "long_count": 0, "short_count": 0, "last_upload": None, "emails": [],
+        }
         results: Dict[str, Dict[str, Optional[Any]]] = {}
         cid_to_pl: Dict[str, Optional[str]] = {}
         pending: List[Tuple[str, str]] = []  # (channel_id, uploads_playlist)
+
+        # ショート/長尺の分離を入れたので recent キャッシュは v2 に上げる（旧形式を無視）
+        rkey = lambda pl: f"{pl}|{count}|v2"  # noqa: E731
 
         for ch in channels:
             cid = ch["channel_id"]
@@ -223,7 +233,7 @@ class YouTubeScreener:
             if not pl:
                 results[cid] = dict(empty)
                 continue
-            cached = self.cache.get("recent", f"{pl}|{count}")
+            cached = self.cache.get("recent", rkey(pl))
             if cached is not None:
                 results[cid] = cached
             else:
@@ -266,57 +276,76 @@ class YouTubeScreener:
                     seen.add(v)
                     ordered_ids.append(v)
 
-        # 動画キャッシュは {"views": int|None, "emails": [..]}。旧形式(int)も許容。
+        # 動画キャッシュは {"views","emails","dur"}。dur 欠落（旧形式/旧版）は取り直す。
         view_map: Dict[str, Optional[int]] = {}
         email_map: Dict[str, List[str]] = {}
+        dur_map: Dict[str, Optional[int]] = {}
         to_fetch: List[str] = []
         for vid in ordered_ids:
             c = self.cache.get("videos", vid)
-            if c is None:
-                to_fetch.append(vid)
-            elif isinstance(c, dict):
+            if isinstance(c, dict) and "dur" in c:
                 view_map[vid] = c.get("views")
                 email_map[vid] = c.get("emails", [])
-            else:  # 旧形式（int のみ）→ メールは無し扱いで再利用
-                view_map[vid] = c
-                email_map[vid] = []
+                dur_map[vid] = c.get("dur")
+            else:
+                to_fetch.append(vid)  # 旧int / dur無し dict は再取得
 
         new_cache: Dict[str, Any] = {}
         for batch in _chunked(to_fetch, 50):
-            # snippet を足してもクオータは1のまま。概要欄からメールを抽出する。
+            # snippet/contentDetails を足してもクオータは1のまま（概要欄メール＋動画の長さ）。
             resp = (
                 self.youtube.videos()
-                .list(part="statistics,snippet", id=",".join(batch))
+                .list(part="statistics,snippet,contentDetails", id=",".join(batch))
                 .execute()
             )
             self.quota_used += 1  # videos.list は 1 ユニット（50件まとめて）
             for it in resp.get("items", []):
                 v = _to_int(it.get("statistics", {}).get("viewCount"))
                 emails = extract_emails(it.get("snippet", {}).get("description", ""))
+                dur = _duration_seconds(it.get("contentDetails", {}).get("duration"))
                 view_map[it["id"]] = v
                 email_map[it["id"]] = emails
-                new_cache[it["id"]] = {"views": v, "emails": emails}
+                dur_map[it["id"]] = dur
+                new_cache[it["id"]] = {"views": v, "emails": emails, "dur": dur}
         self.cache.set_many("videos", new_cache)
 
-        # 3) チャンネルごとに平均・抽出メールをまとめ、recent キャッシュへ一括保存
+        # 3) チャンネルごとに長尺/ショートを仕分けて平均、recent キャッシュへ一括保存
         recent_to_cache: Dict[str, Any] = {}
         for cid, (vids, last) in channel_videos.items():
             if vids is None:  # playlistItems が失敗
                 results[cid] = dict(empty)
                 continue
-            vv = [view_map.get(v) for v in vids]
-            vv = [v for v in vv if v is not None]
-            avg = round(sum(vv) / len(vv), 1) if vv else None
+            long_views: List[int] = []
+            short_views: List[int] = []
+            for v in vids:
+                views = view_map.get(v)
+                if views is None:
+                    continue
+                dur = dur_map.get(v)
+                if dur is not None and dur <= SHORT_MAX_SECONDS:
+                    short_views.append(views)
+                else:  # 長尺、または長さ不明は長尺扱い
+                    long_views.append(views)
+            avg_long = round(sum(long_views) / len(long_views), 1) if long_views else None
+            avg_short = round(sum(short_views) / len(short_views), 1) if short_views else None
             emails: List[str] = []
             for v in vids:
                 for e in email_map.get(v, []):
                     if e not in emails:
                         emails.append(e)
-            out = {"avg_views": avg, "last_upload": last, "emails": emails}
+            out = {
+                "avg_views": avg_long,        # フィルタ/スコアの基準＝長尺平均
+                "avg_views_long": avg_long,
+                "avg_views_short": avg_short,
+                "long_count": len(long_views),
+                "short_count": len(short_views),
+                "last_upload": last,
+                "emails": emails,
+            }
             results[cid] = out
             pl = cid_to_pl.get(cid)
             if pl:
-                recent_to_cache[f"{pl}|{count}"] = out
+                recent_to_cache[rkey(pl)] = out
         self.cache.set_many("recent", recent_to_cache)
 
         return results
@@ -338,6 +367,19 @@ def _to_int(value: Any) -> Optional[int]:
 
 
 import re
+
+_DUR_RE = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$")
+
+
+def _duration_seconds(iso: Optional[str]) -> Optional[int]:
+    """ISO8601 duration（例 PT2M30S）を秒に変換。判定不能なら None。"""
+    if not iso:
+        return None
+    m = _DUR_RE.match(iso)
+    if not m:
+        return None
+    h, mi, s = (int(x) if x else 0 for x in m.groups())
+    return h * 3600 + mi * 60 + s
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 # 画像/動画ファイル名などの誤検出を弾く
@@ -536,13 +578,14 @@ def run_screening(
     final: List[Dict[str, Any]] = []
     drop2 = {"avg": 0, "eng": 0, "active": 0, "relevance": 0}
     for info in stage1:
-        recent = recent_map.get(
-            info["channel_id"], {"avg_views": None, "last_upload": None, "emails": []}
-        )
-        avg = recent["avg_views"]
+        recent = recent_map.get(info["channel_id"]) or {}
+        avg = recent.get("avg_views")  # = 長尺平均
         info["avg_views"] = avg
-        info["last_upload"] = recent["last_upload"]
-        info["days_since_upload"] = _days_since(recent["last_upload"])
+        info["avg_views_short"] = recent.get("avg_views_short")
+        info["long_count"] = recent.get("long_count", 0)
+        info["short_count"] = recent.get("short_count", 0)
+        info["last_upload"] = recent.get("last_upload")
+        info["days_since_upload"] = _days_since(recent.get("last_upload"))
         subs = info.get("subscriber_count") or 0
         info["engagement"] = round(avg / subs, 4) if (avg and subs) else None
 
@@ -603,7 +646,10 @@ EXCEL_HEADERS = [
     ("チャンネル名", "title", 30),
     ("テーマ", "theme", 10),
     ("登録者数", "subscriber_count", 12),
-    ("直近平均再生数", "avg_views", 14),
+    ("長尺平均再生数", "avg_views", 14),
+    ("ショート平均再生数", "avg_views_short", 16),
+    ("長尺本数", "long_count", 9),
+    ("ショート本数", "short_count", 11),
     ("エンゲージ率", "engagement", 12),
     ("動画本数", "video_count", 10),
     ("最終投稿日", "last_upload", 12),
@@ -640,9 +686,9 @@ def _build_workbook(rows: List[Dict[str, Any]]) -> Workbook:
             elif key in ("matched_keywords", "competitor_flags", "emails") and isinstance(value, list):
                 value = ", ".join(value)
             cell = ws.cell(row=r, column=c, value=value)
-            if key in ("subscriber_count", "view_count", "video_count"):
+            if key in ("subscriber_count", "view_count", "video_count", "long_count", "short_count"):
                 cell.number_format = "#,##0"
-            elif key == "avg_views":
+            elif key in ("avg_views", "avg_views_short"):
                 cell.number_format = "#,##0.0"
             elif key == "engagement":
                 cell.number_format = "0.0%"

@@ -329,7 +329,13 @@ function StatsBar({ stats }: { stats: Stats }) {
 /* --------------------------------------------------------------------- */
 /* 結果テーブル                                                           */
 /* --------------------------------------------------------------------- */
-type SortKey = "score" | "subscriber_count" | "avg_views" | "engagement" | "video_count";
+type SortKey =
+  | "score"
+  | "subscriber_count"
+  | "avg_views"
+  | "avg_views_short"
+  | "engagement"
+  | "video_count";
 
 function ResultsTable({
   results,
@@ -386,7 +392,10 @@ function ResultsTable({
       ["チャンネル名", (r) => r.title],
       ["テーマ", (r) => r.theme],
       ["登録者数", (r) => r.subscriber_count ?? ""],
-      ["直近平均再生数", (r) => r.avg_views ?? ""],
+      ["長尺平均再生数", (r) => r.avg_views ?? ""],
+      ["ショート平均再生数", (r) => r.avg_views_short ?? ""],
+      ["長尺本数", (r) => r.long_count ?? 0],
+      ["ショート本数", (r) => r.short_count ?? 0],
       ["エンゲージ率", (r) => (r.engagement != null ? `${(r.engagement * 100).toFixed(1)}%` : "")],
       ["動画数", (r) => r.video_count ?? ""],
       ["最終投稿日", (r) => (r.last_upload || "").slice(0, 10)],
@@ -457,7 +466,9 @@ function ResultsTable({
               <th className="px-3 py-2 text-left">チャンネル</th>
               <th className="px-3 py-2 text-left">テーマ</th>
               {header("登録者", "subscriber_count")}
-              {header("平均再生", "avg_views")}
+              {header("長尺平均", "avg_views")}
+              {header("ｼｮｰﾄ平均", "avg_views_short")}
+              <th className="px-3 py-2 text-right whitespace-nowrap">本数(長/S)</th>
               {header("ｴﾝｹﾞｰｼﾞ", "engagement")}
               {header("動画数", "video_count")}
               <th className="px-3 py-2 text-left">最終投稿</th>
@@ -485,6 +496,10 @@ function ResultsTable({
                 <td className="px-3 py-2">{r.theme}</td>
                 <td className="px-3 py-2 text-right">{fmt(r.subscriber_count)}</td>
                 <td className="px-3 py-2 text-right">{fmt(r.avg_views)}</td>
+                <td className="px-3 py-2 text-right text-gray-500">{fmt(r.avg_views_short)}</td>
+                <td className="px-3 py-2 text-right whitespace-nowrap text-xs text-gray-500">
+                  {r.long_count ?? 0}/{r.short_count ?? 0}
+                </td>
                 <td className="px-3 py-2 text-right">{pct(r.engagement)}</td>
                 <td className="px-3 py-2 text-right">{fmt(r.video_count)}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{(r.last_upload || "").slice(0, 10)}</td>
