@@ -28,17 +28,29 @@ export const GENERATOR_PROMPT = `役割: あなたはインフルエンサーマ
 - 起用したいチャンネル規模（登録者）:
 - 地域・言語（既定 JP / ja）:
 
-# 出力フォーマット（アプリにそのまま貼れる形で）
-- keywords_tier1（改行区切り。各語は「シーン語＋ニーズ語」の複合にする）
-- keywords_tier2 / keywords_tier3（改行区切り）
-- exclude_title_keywords（改行区切り）
-- competitor_flag_keywords（改行区切り）
-- filters（JSON: subscriber_min/max, avg_views_min, engagement_min, min_video_count, active_within_days）
-- theme_overrides（JSON。サブテーマ別のしきい値や require_keywords。不要なら {}）
-- scoring_weights（JSON: scene_match/engagement/recent_activity/subscriber_fit、合計100目安）
-- 設計意図メモ（各tierの狙い／除外理由／クオータ概算＝語数×100）
+# 出力（この順で2つ）
+1. 設計意図メモ（各tierの狙い／除外理由／推奨フィルタ値の目安／クオータ概算＝語数×100）。
+   ※登録者数・エンゲージ率などのフィルタはユーザーが手で設定するので、ここは文章での「目安」だけ。
+2. アプリ貼り付け用の JSON を json コードブロックで **1つだけ** 出力。下記キーのみ（filters は入れない）。
+   - keywords_tier1 / keywords_tier2 / keywords_tier3 … 文字列の配列（各語は「シーン語＋ニーズ語」の複合）
+   - exclude_title_keywords … 文字列の配列
+   - competitor_flag_keywords … 文字列の配列
+   - theme_overrides … オブジェクト（例 {"星空":{"avg_views_min":10000},"釣り":{"require_keywords":["魚探","電動リール"]}}）。不要なら {}
+   - scoring_weights … {"scene_match":35,"engagement":30,"recent_activity":20,"subscriber_fit":15}
+
+   出力例（JSON）:
+   {
+     "keywords_tier1": ["電動リール バッテリー", "魚群探知機 取り付け"],
+     "keywords_tier2": ["船釣り", "ジギング 電動"],
+     "keywords_tier3": ["ボート釣り"],
+     "exclude_title_keywords": ["バス釣り", "占い"],
+     "competitor_flag_keywords": ["EcoFlow", "BLUETTI"],
+     "theme_overrides": {"星空": {"avg_views_min": 10000}},
+     "scoring_weights": {"scene_match": 35, "engagement": 30, "recent_activity": 20, "subscriber_fit": 15}
+   }
 
 # 出力前のセルフチェック
+- JSON は1つだけ・filters は含めない・有効なJSON（末尾カンマ無し）になっているか？
 - tier1 の各語は「単独の広い語」でなく複合語になっているか？
 - 隣接ノイズ（似て非なるジャンル）を exclude したか？
 - "実際に商材を使う層"を require_keywords で担保したか？

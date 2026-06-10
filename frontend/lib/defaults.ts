@@ -166,3 +166,61 @@ export function deletePreset(name: string) {
   delete all[name];
   localStorage.setItem(PRESET_KEY, JSON.stringify(all));
 }
+
+// ---- 一括入力（AI生成JSONの取り込み） -------------------------------------
+
+// 貼り付けテキストから JSON オブジェクトを寛容に抽出する。
+// ```json ... ``` の囲いや前後の説明文があっても、JSON部分だけを取り出す。
+export function parseConfigText(text: string): Record<string, unknown> {
+  let t = (text || "").trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  const s = t.indexOf("{");
+  const e = t.lastIndexOf("}");
+  if (s >= 0 && e > s) t = t.slice(s, e + 1);
+  const obj = JSON.parse(t);
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
+    throw new Error("JSONオブジェクトではありません");
+  }
+  return obj as Record<string, unknown>;
+}
+
+// JSON設定をフォームへ反映。キーワード系・除外語・競合・テーマ別上書き・スコアのみ。
+// フィルタ（登録者数/平均再生/エンゲージ率/本数/直近活動）は意図的に触らない。
+export function applyConfigToForm(form: FormState, c: Record<string, unknown>): FormState {
+  const next: FormState = { ...form };
+  const lines = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x)).join("\n") : undefined);
+  const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+
+  const t1 = lines(c.keywords_tier1);
+  if (t1 !== undefined) next.keywordsTier1 = t1;
+  const t2 = lines(c.keywords_tier2);
+  if (t2 !== undefined) next.keywordsTier2 = t2;
+  const t3 = lines(c.keywords_tier3);
+  if (t3 !== undefined) next.keywordsTier3 = t3;
+
+  const ex = lines(c.exclude_title_keywords);
+  if (ex !== undefined) next.excludeTitle = ex;
+  const cf = lines(c.competitor_flag_keywords);
+  if (cf !== undefined) next.competitorFlags = cf;
+
+  if (c.theme_overrides !== undefined && typeof c.theme_overrides === "object") {
+    next.themeOverridesJson = JSON.stringify(c.theme_overrides, null, 2);
+  }
+
+  const sw = c.scoring_weights as Record<string, unknown> | undefined;
+  if (sw && typeof sw === "object") {
+    next.sceneMatch = num(sw.scene_match) ?? next.sceneMatch;
+    next.engagement = num(sw.engagement) ?? next.engagement;
+    next.recentActivity = num(sw.recent_activity) ?? next.recentActivity;
+    next.subscriberFit = num(sw.subscriber_fit) ?? next.subscriberFit;
+  }
+
+  if (typeof c.region_code === "string") next.region = c.region_code;
+  next.resultsPerKeyword = num(c.results_per_keyword) ?? next.resultsPerKeyword;
+  next.maxSearchesPerRun = num(c.max_searches_per_run) ?? next.maxSearchesPerRun;
+  next.recentVideoCount = num(c.recent_video_count) ?? next.recentVideoCount;
+  if (typeof c.multi_keyword_bonus === "boolean") next.multiKeywordBonus = c.multi_keyword_bonus;
+
+  return next; // filters 系（subMin/subMax/avgViewsMin/engagementMin/minVideoCount/activeWithinDays）はそのまま
+}

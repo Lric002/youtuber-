@@ -12,9 +12,11 @@ import {
 import {
   DEFAULT_FORM,
   FormState,
+  applyConfigToForm,
   deletePreset,
   formToConfig,
   loadPresets,
+  parseConfigText,
   savePreset,
 } from "@/lib/defaults";
 
@@ -132,6 +134,8 @@ function SearchForm({
     <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-800 dark:bg-gray-900">
       <PresetBar form={form} setForm={setForm} />
 
+      <BulkImport form={form} setForm={setForm} />
+
       {/* シンプル表示 */}
       <label className="mb-1 block text-sm font-semibold">検索キーワード（1行に1つ）</label>
       <textarea
@@ -215,6 +219,56 @@ function SearchForm({
         {running ? "検索中..." : "検索する"}
       </button>
     </section>
+  );
+}
+
+/* 一括入力（AI生成JSONの取り込み）。フィルタ値は触らない。 */
+function BulkImport({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
+  const [text, setText] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function apply() {
+    let obj: Record<string, unknown>;
+    try {
+      obj = parseConfigText(text);
+    } catch {
+      setMsg({ ok: false, text: "JSONとして読めません。プロンプトが出力したJSON部分を貼ってください。" });
+      return;
+    }
+    setForm(applyConfigToForm(form, obj));
+    setMsg({
+      ok: true,
+      text: "反映しました（フィルタ値は変更していません）。内容を確認して『検索する』を押してください。",
+    });
+  }
+
+  return (
+    <details className="mb-4 rounded-lg border border-blue-200 bg-blue-50/40 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+      <summary className="cursor-pointer text-sm font-semibold text-blue-700 dark:text-blue-300">
+        一括入力（AIが生成したJSONを貼り付け）
+      </summary>
+      <p className="mt-2 text-xs text-gray-500">
+        「検索のコツ」のプロンプトをAIに渡して出てきたJSONを貼って「反映」。キーワード・除外語・競合・テーマ別上書き・スコアが埋まります（登録者数・エンゲージ率などのフィルタは手動のまま）。
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={6}
+        placeholder='{ "keywords_tier1": ["..."], "exclude_title_keywords": ["..."], ... }'
+        className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs dark:border-gray-700 dark:bg-gray-800"
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <button
+          onClick={apply}
+          className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+          反映
+        </button>
+        {msg && (
+          <span className={`text-xs ${msg.ok ? "text-green-600" : "text-red-600"}`}>{msg.text}</span>
+        )}
+      </div>
+    </details>
   );
 }
 
